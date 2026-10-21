@@ -21,10 +21,10 @@ router = APIRouter(prefix="/api/v1/songs", tags=["Songs"])
 
 NOT_FOUND = {"model": ErrorResponse, "description": "Song not found"}
 CONFLICT = {
-       "model": ErrorResponse,
-       "description": "A song with the same title and artist already exists",
-       "content": {"application/json": {"example": {"detail": "A song with this title and artist already exists"}}},
-   }
+    "model": ErrorResponse,
+    "description": "A song with the same title and artist already exists",
+    "content": {"application/json": {"example": {"detail": "A song with this title and artist already exists"}}},
+}
 
 
 def row_to_song(row: sqlite3.Row) -> SongOut:
