@@ -1,0 +1,11 @@
+# Entorno virtual y cachés de Python
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Base de datos local
+*.db
+
+# Variables de entorno: AQUÍ VA LA API KEY, NUNCA SE SUBE A GITHUB
+.env

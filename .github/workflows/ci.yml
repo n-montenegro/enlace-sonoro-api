@@ -1,0 +1,25 @@
+# Pipeline CI: en cada push o pull request instala dependencias y corre las pruebas.
+# Si todas pasan, el check queda en verde en GitHub (pestaña Actions).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar pruebas de integración
+        run: pytest -v
