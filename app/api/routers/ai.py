@@ -1,25 +1,22 @@
 """
-ai.py - Endpoints del asistente musical con LLM.
+ai.py - ADAPTADOR DE ENTRADA (HTTP): endpoints del asistente musical con LLM.
 
   POST /api/v1/ai        -> hace una pregunta al asistente (RAG + Gemini)
   GET  /api/v1/ai/calls  -> muestra el registro de llamadas realizadas (evidencia)
 
-Flujo del POST:
-  1. RAG: se recuperan canciones del catálogo relacionadas con la pregunta.
-  2. Se arma el prompt con la técnica elegida (zero_shot, few_shot o chain_of_thought).
-  3. Se llama a Gemini.
-  4. Se registra la llamada (también las fallidas) y se responde.
+La lógica (RAG, prompt, llamada al LLM y registro) está en RecommendationService.
+Aquí solo se traducen los errores del dominio a códigos HTTP.
 """
 from typing import List, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app import llm_client
-from app.call_log import read_calls, save_call
-from app.prompts import SYSTEM_INSTRUCTION, build_prompt
-from app.rag import build_context, retrieve_songs
-from app.schemas import ErrorResponse
+from app.api.dependencies import get_recommendation_service
+from app.api.schemas import ErrorResponse
+from app.application.recommendation_service import RecommendationService
+from app.domain.recommendation.ports import (LLMConfigError, LLMError, LLMRateLimitError,
+                                             LLMTimeoutError)
 
 router = APIRouter(prefix="/api/v1/ai", tags=["AI Assistant"])
 
@@ -63,35 +60,17 @@ class AIResponse(BaseModel):
         504: error_doc("The LLM did not respond in time", "Gemini did not respond within 30 seconds"),
     },
 )
-def ask_assistant(request: AIRequest):
-    songs = retrieve_songs(request.question)
-    prompt = build_prompt(request.technique, request.question, build_context(songs))
-    song_labels = [f"{s['title']} - {s['artist']}" for s in songs]
-    base_log = {"technique": request.technique, "question": request.question,
-                "model": llm_client.get_model(), "retrieved_songs": song_labels}
-
+def ask_assistant(request: AIRequest, service: RecommendationService = Depends(get_recommendation_service)):
     try:
-        result = llm_client.ask_gemini(prompt, SYSTEM_INSTRUCTION)
-    except llm_client.LLMConfigError as exc:
+        return AIResponse(**service.ask(request.question, request.technique))
+    except LLMConfigError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    except llm_client.LLMRateLimitError as exc:
-        save_call({**base_log, "status": 429, "error": str(exc)})
+    except LLMRateLimitError as exc:
         raise HTTPException(status_code=429, detail=str(exc))
-    except llm_client.LLMTimeoutError as exc:
-        save_call({**base_log, "status": 504, "error": str(exc)})
+    except LLMTimeoutError as exc:
         raise HTTPException(status_code=504, detail=str(exc))
-    except llm_client.LLMError as exc:
-        save_call({**base_log, "status": 502, "error": str(exc)})
+    except LLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-
-    save_call({**base_log, "status": 200, "answer": result["text"],
-               "input_tokens": result["input_tokens"], "output_tokens": result["output_tokens"],
-               "thinking_tokens": result["thinking_tokens"], "latency_ms": result["latency_ms"]})
-
-    return AIResponse(answer=result["text"], technique=request.technique, model=result["model"],
-                      retrieved_songs=song_labels, input_tokens=result["input_tokens"],
-                      output_tokens=result["output_tokens"] + result["thinking_tokens"],
-                      latency_ms=result["latency_ms"])
 
 
 @router.get(
@@ -99,5 +78,5 @@ def ask_assistant(request: AIRequest):
     summary="List logged LLM calls",
     description="Returns every call made to the LLM (successful and failed), used as evidence of real usage.",
 )
-def list_calls():
-    return read_calls()
+def list_calls(service: RecommendationService = Depends(get_recommendation_service)):
+    return service.calls()

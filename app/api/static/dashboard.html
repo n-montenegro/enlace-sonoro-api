@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enlace Sonoro · Datos abiertos</title>
+<!-- Chart.js para las gráficas -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --rojo: #A70311; --azul: #02154D; --gris: #f3f3f5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: var(--gris); color: var(--azul); }
+  header { background: var(--azul); color: white; padding: 18px 32px; border-bottom: 5px solid var(--rojo); }
+  header h1 { margin: 0; font-size: 24px; }
+  header p { margin: 4px 0 0; opacity: .8; font-size: 14px; }
+  main { max-width: 1150px; margin: 24px auto; padding: 0 16px; display: grid; gap: 20px;
+         grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); }
+  section { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid var(--rojo); }
+  h2 { margin: 0 0 4px; font-size: 18px; }
+  .fuente { font-size: 12px; color: #666; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 12px; }
+  td { padding: 6px 8px; border-bottom: 1px solid #e3e3e3; }
+  td:last-child { text-align: right; font-weight: bold; }
+  .estado { display: inline-block; padding: 3px 10px; border-radius: 12px; color: white; font-size: 13px; font-weight: bold; }
+  .CLOSED { background: #1e8a3c; } .OPEN { background: var(--rojo); } .HALF_OPEN { background: #c98a00; }
+  .ancho { grid-column: 1 / -1; }
+  .error { color: var(--rojo); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Enlace Sonoro · Datos abiertos de Colombia</h1>
+  <p>Consultas analíticas con DuckDB sobre datos.gov.co y el DANE</p>
+</header>
+
+<main>
+  <section>
+    <h2>Municipios por departamento (top 10)</h2>
+    <div class="fuente" id="fuente-mun">Cargando...</div>
+    <canvas id="grafica-mun" height="260"></canvas>
+    <table id="tabla-mun"></table>
+  </section>
+
+  <section>
+    <h2>Encuesta de Consumo Cultural: descargas por año</h2>
+    <div class="fuente" id="fuente-ecc">Cargando...</div>
+    <canvas id="grafica-ecc" height="260"></canvas>
+    <table id="tabla-ecc"></table>
+  </section>
+
+  <section class="ancho">
+    <h2>Estado de los circuit breakers</h2>
+    <table id="tabla-cb"></table>
+  </section>
+</main>
+
+<script>
+const nombres = {
+  departamentos: "Departamentos", total_municipios: "Total de municipios", promedio: "Promedio por departamento",
+  mediana: "Mediana", desviacion_estandar: "Desviación estándar", minimo: "Mínimo", maximo: "Máximo",
+  encuestas: "Encuestas (ECC)", total_descargas: "Total de descargas", promedio_descargas: "Promedio de descargas",
+  mediana_descargas: "Mediana de descargas", desviacion_descargas: "Desviación estándar",
+  minimo_descargas: "Mínimo", maximo_descargas: "Máximo", promedio_vistas: "Promedio de vistas"
+};
+
+function llenarTabla(id, resumen) {
+  document.getElementById(id).innerHTML = Object.entries(resumen)
+    .map(([k, v]) => `<tr><td>${nombres[k] || k}</td><td>${Number(v).toLocaleString("es-CO")}</td></tr>`).join("");
+}
+
+function textoFuente(datos) {
+  return `Fuente: ${datos.source}` + (datos.from_cache ? " · usando copia guardada (la API no respondió)" : " · datos en vivo");
+}
+
+async function cargarMunicipios() {
+  const r = await fetch("/api/v1/opendata/municipalities/stats");
+  if (!r.ok) { document.getElementById("fuente-mun").innerHTML = `<span class="error">${(await r.json()).detail}</span>`; return; }
+  const datos = await r.json();
+  document.getElementById("fuente-mun").textContent = textoFuente(datos);
+  const top = datos.by_department.slice(0, 10);
+  new Chart(document.getElementById("grafica-mun"), {
+    type: "bar",
+    data: { labels: top.map(d => d.departamento),
+            datasets: [{ label: "Municipios", data: top.map(d => d.municipios), backgroundColor: "#A70311" }] },
+    options: { indexAxis: "y", plugins: { legend: { display: false } } }
+  });
+  llenarTabla("tabla-mun", datos.summary);
+}
+
+async function cargarCultura() {
+  const r = await fetch("/api/v1/opendata/culture/stats");
+  if (!r.ok) { document.getElementById("fuente-ecc").innerHTML = `<span class="error">${(await r.json()).detail}</span>`; return; }
+  const datos = await r.json();
+  document.getElementById("fuente-ecc").textContent = textoFuente(datos);
+  new Chart(document.getElementById("grafica-ecc"), {
+    type: "line",
+    data: { labels: datos.studies.map(e => e.anio),
+            datasets: [{ label: "Descargas", data: datos.studies.map(e => e.descargas),
+                         borderColor: "#02154D", backgroundColor: "#02154D", tension: 0.2 }] },
+    options: { plugins: { legend: { display: false } } }
+  });
+  llenarTabla("tabla-ecc", datos.summary);
+}
+
+async function cargarEstado() {
+  const datos = await (await fetch("/api/v1/opendata/status")).json();
+  document.getElementById("tabla-cb").innerHTML = datos.sources.map(s =>
+    `<tr><td>${s.source}</td><td>fallos seguidos: ${s.consecutive_failures}/${s.failure_threshold}
+     &nbsp; <span class="estado ${s.state}">${s.state}</span></td></tr>`).join("");
+}
+
+// primero los datos y después el estado, para ver cómo quedaron los breakers
+Promise.allSettled([cargarMunicipios(), cargarCultura()]).then(cargarEstado);
+</script>
+</body>
+</html>

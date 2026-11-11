@@ -1,15 +1,16 @@
 """
-test_songs.py - 3 pruebas de integración de la API de canciones.
+test_songs_api.py - 3 pruebas de integración de la API de canciones.
 
-Son "de integración" porque prueban la API completa (HTTP -> FastAPI -> SQLite)
-sin simular nada. Cada prueba usa una base de datos temporal nueva.
+Son "de integración" porque prueban todas las capas juntas
+(HTTP -> router -> SongService -> SqliteSongRepository -> SQLite). Cada prueba usa una base de datos temporal nueva.
 
 Ejecutar: pytest -v
 """
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import create_app
+from tests.fakes import FakeLLM
 
 SONG = {
     "title": "Bohemian Rhapsody",
@@ -24,7 +25,8 @@ SONG = {
 def client(tmp_path, monkeypatch):
     # Cada prueba usa su propio archivo .db temporal
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    with TestClient(app) as c:  # el "with" ejecuta init_db()
+    app = create_app(llm=FakeLLM())
+    with TestClient(app) as c:  # el "with" crea la tabla (lifespan)
         yield c
 
 

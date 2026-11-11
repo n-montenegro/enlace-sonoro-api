@@ -12,7 +12,31 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Swagger UI: http://127.0.0.1:8000/docs
+Swagger UI: http://127.0.0.1:8000/docs  
+Dashboard (DuckDB charts): http://127.0.0.1:8000/dashboard
+
+## Architecture (Lab Guide 6)
+
+Hexagonal architecture (ports and adapters). See [ADR 0001](docs/adr/0001-hexagonal-architecture.md) and the [bounded contexts diagram](docs/bounded-contexts.md).
+
+```
+app/
+├── domain/            # entities, business rules and ports (no external libraries)
+│   ├── catalog/       # Song, SongRepository
+│   ├── playback/      # Playlist (doubly linked list)
+│   ├── recommendation/# RAG, prompts, LLMPort, CallLogPort
+│   └── opendata/      # OpenDataSource, DatasetStore, AnalyticsPort
+├── application/       # SongService, RecommendationService, OpenDataService
+├── infrastructure/    # SQLite, Gemini, datos.gov.co, DANE, circuit breaker, DuckDB
+├── api/               # FastAPI routers, schemas, dashboard
+└── main.py            # composition root (dependency injection)
+```
+
+Circuit breaker demo:
+
+```bash
+py -3.14 scripts/demo_circuit_breaker.py
+```
 
 ## AI music assistant (Gemini)
 
@@ -42,3 +66,7 @@ pytest -v
 | DELETE | /api/v1/songs/{id} | Delete a song |
 | POST | /api/v1/ai | Ask the AI music assistant (RAG + Gemini) |
 | GET | /api/v1/ai/calls | List logged LLM calls |
+| GET | /api/v1/opendata/municipalities/stats | DIVIPOLA (datos.gov.co) analyzed with DuckDB |
+| GET | /api/v1/opendata/culture/stats | Cultural Consumption Survey (DANE) analyzed with DuckDB |
+| GET | /api/v1/opendata/status | Circuit breaker states |
+| GET | /dashboard | Charts page |

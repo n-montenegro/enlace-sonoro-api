@@ -1,5 +1,5 @@
 """
-playlist.py - Playlist de Enlace Sonoro implementada como LISTA DOBLEMENTE ENLAZADA.
+playlist.py - Bounded context "Reproducción": playlist implementada como LISTA DOBLEMENTE ENLAZADA.
 
 Cada canción se guarda en un Nodo que apunta a la canción siguiente y a la anterior.
 Así, pasar a la siguiente o volver a la anterior no requiere recorrer la lista.

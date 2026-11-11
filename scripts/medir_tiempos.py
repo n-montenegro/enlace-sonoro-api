@@ -1,6 +1,6 @@
 """
 medir_tiempos.py - Compara agregar canciones AL INICIO usando:
-  - nuestra Playlist (lista doblemente enlazada, app/playlist.py)
+  - nuestra Playlist (lista doblemente enlazada, app/domain/playback/playlist.py)
   - una list normal de Python con insert(0, x)
 
 Ejecutar desde la carpeta del proyecto:  python scripts/medir_tiempos.py
@@ -11,7 +11,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.playlist import Playlist  # noqa: E402
+from app.domain.playback.playlist import Playlist  # noqa: E402
 
 TAMANOS = [1000, 5000, 10000, 50000, 100000]
 REPETICIONES = 3

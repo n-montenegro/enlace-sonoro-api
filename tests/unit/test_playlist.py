@@ -1,5 +1,5 @@
 """Pruebas de la playlist como lista doblemente enlazada."""
-from app.playlist import Playlist
+from app.domain.playback.playlist import Playlist
 
 
 def test_agregar_y_orden():

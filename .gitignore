@@ -9,3 +9,6 @@ __pycache__/
 
 # Variables de entorno: AQUÍ VA LA API KEY, NUNCA SE SUBE A GITHUB
 .env
+
+# Copias JSON descargadas de datos.gov.co y el DANE
+data/
