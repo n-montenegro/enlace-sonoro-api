@@ -9,7 +9,7 @@ from app.api.rate_limit import RateLimiter
 from app.domain.identity.errors import InvalidTokenError
 from app.domain.identity.user import User
 from app.infrastructure.security.jwt_token_service import JwtTokenService
-from app.infrastructure.security.pbkdf2_hasher import DEFAULT_ITERATIONS, Pbkdf2PasswordHasher
+from app.infrastructure.security.pbkdf2_hasher import DEFAULT_ITERATIONS, MAX_ITERATIONS, Pbkdf2PasswordHasher
 
 SECRET = "x" * 40
 
@@ -22,6 +22,18 @@ def test_hash_is_salted_and_verifiable():
     assert hasher.verify("mi-clave-123", first)
     assert not hasher.verify("otra-clave", first)
     assert not hasher.verify("mi-clave-123", "formato-invalido")
+
+
+def test_damaged_stored_hash_is_rejected_without_crashing():
+    """Regresión (evaluación de Copilot): antes estos valores lanzaban ValueError y el login daba error 500."""
+    hasher = Pbkdf2PasswordHasher(iterations=1_000)
+    good = hasher.hash("mi-clave-123")
+    _, _, salt_hex, digest_hex = good.split("$")
+    assert not hasher.verify("mi-clave-123", f"pbkdf2_sha256$mil${salt_hex}${digest_hex}")    # iteraciones no numéricas
+    assert not hasher.verify("mi-clave-123", f"pbkdf2_sha256$1000$zz${digest_hex}")            # sal no hexadecimal
+    assert not hasher.verify("mi-clave-123", f"pbkdf2_sha256$0${salt_hex}${digest_hex}")       # cero iteraciones
+    assert not hasher.verify("mi-clave-123", f"pbkdf2_sha256${MAX_ITERATIONS + 1}${salt_hex}${digest_hex}")  # demasiado caro
+    assert not hasher.verify("mi-clave-123", f"md5$1000${salt_hex}${digest_hex}")              # otro algoritmo
 
 
 def test_default_iterations_follow_owasp_recommendation():
