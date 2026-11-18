@@ -1,25 +1,70 @@
-# Pipeline CI: en cada push o pull request instala dependencias y corre las pruebas.
-# Si todas pasan, el check queda en verde en GitHub (pestaña Actions).
+# Pipeline CI/CD de Enlace Sonoro
+#   1. tests:    pruebas + cobertura y análisis de SonarQube Cloud (si existe el secreto SONAR_TOKEN)
+#   2. mutation: mutation testing con mutmut; el build FALLA si el Mutation Score es menor a 50 %
 name: CI
 
 on:
   push:
   pull_request:
 
+# Seguridad de la cadena de suministro (correcciones de SonarQube Cloud):
+#   - Las dependencias se instalan desde requirements-lock.txt, con versiones fijas y hash SHA-256
+#     (--require-hashes) y solo como paquetes binarios (--only-binary :all:), sin ejecutar setup.py.
+#   - Las acciones de GitHub se fijan por su SHA completo (el comentario indica la versión).
+
+# Permisos mínimos para el token de GitHub (buena práctica de seguridad)
+permissions:
+  contents: read
+
 jobs:
   tests:
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0  # SonarQube Cloud necesita el historial completo
 
       - name: Instalar Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
 
-      - name: Instalar dependencias
-        run: pip install -r requirements.txt
+      - name: Instalar dependencias (versiones bloqueadas con hash)
+        run: 'pip install --only-binary :all: --require-hashes -r requirements-lock.txt'
 
-      - name: Ejecutar pruebas (unitarias, de integración y de arquitectura)
-        run: pytest -v
+      - name: Ejecutar pruebas con cobertura
+        run: pytest -v --cov=app --cov-report=xml --cov-report=term
+
+      - name: Análisis de SonarQube Cloud
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4  # v8
+
+  mutation:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - name: Instalar Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias y mutmut (versiones bloqueadas con hash)
+        run: 'pip install --only-binary :all: --require-hashes -r requirements-lock.txt'
+
+      - name: Ejecutar mutation testing
+        run: |
+          mutmut run > mutmut.log 2>&1 || (tail -n 50 mutmut.log; exit 1)
+          mutmut export-cicd-stats
+
+      - name: Verificar Mutation Score (mínimo 50 %)
+        run: python scripts/mutation_score.py --min 50
+
+      - name: Listar mutantes sobrevivientes
+        if: always()
+        run: mutmut results || true

@@ -7,12 +7,14 @@ flowchart LR
         R2[ai router]
         R3[opendata router]
         R4[dashboard]
+        R5[auth / admin routers]
     end
 
     subgraph APP["application (use cases)"]
         S1[SongService]
         S2[RecommendationService]
         S3[OpenDataService]
+        S4[AuthService]
     end
 
     subgraph DOM["domain"]
@@ -20,6 +22,7 @@ flowchart LR
         C2["Playback<br/>Playlist (linked list)"]
         C3["Recommendation<br/>RAG, prompts, LLMPort"]
         C4["Open Data<br/>OpenDataSource, AnalyticsPort"]
+        C5["Identity<br/>User, roles ADMIN/USER"]
     end
 
     subgraph INF["infrastructure (output adapters)"]
@@ -29,6 +32,7 @@ flowchart LR
         I4[DANE ANDA catalog]
         I5[(DuckDB)]
         CB{{Circuit breaker + retry}}
+        I6[JWT + PBKDF2]
     end
 
     R1 --> S1 --> C1
@@ -36,6 +40,8 @@ flowchart LR
     S2 --> C1
     R3 --> S3 --> C4
     R4 --> R3
+    R5 --> S4 --> C5
+    I6 -. implements .-> C5
     I1 -. implements .-> C1
     I2 -. implements .-> C3
     CB --> I3

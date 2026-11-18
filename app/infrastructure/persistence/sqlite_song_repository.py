@@ -42,8 +42,9 @@ class SqliteSongRepository(SongRepository):
 
     @staticmethod
     def _to_song(row: sqlite3.Row) -> Song:
-        return Song(id=row["id"], title=row["title"], artist=row["artist"], album=row["album"],
-                    genre=row["genre"], duration_seconds=row["duration_seconds"])
+        # Corrección SonarQube (Reliability): antes se leía row["id"], row["title"]...
+        # Ahora la fila se convierte en diccionario; las columnas se llaman igual que los campos de Song.
+        return Song(**dict(row))
 
     def add(self, song: Song) -> Song:
         conn = self._connect()

@@ -12,3 +12,9 @@ __pycache__/
 
 # Copias JSON descargadas de datos.gov.co y el DANE
 data/
+
+# Carpeta temporal de mutmut (mutation testing)
+mutants/
+# Reportes de cobertura
+coverage.xml
+.coverage

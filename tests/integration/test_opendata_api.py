@@ -6,14 +6,12 @@ OpenDataService + JsonDatasetStore + DuckDB.
 """
 from fastapi.testclient import TestClient
 
-from app.main import create_app
-from tests.fakes import DANE_SAMPLE, DIVIPOLA_SAMPLE, FakeLLM, FakeSource
+from tests.fakes import DANE_SAMPLE, DIVIPOLA_SAMPLE, FakeSource
+from tests.helpers import make_app
 
 
 def make_client(tmp_path, monkeypatch, mun, dane):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    monkeypatch.setenv("OPEN_DATA_DIR", str(tmp_path / "data"))
-    return TestClient(create_app(llm=FakeLLM(), municipalities=mun, studies=dane))
+    return TestClient(make_app(tmp_path, monkeypatch, municipalities=mun, studies=dane))
 
 
 def test_municipalities_stats_with_duckdb(tmp_path, monkeypatch):
@@ -55,3 +53,11 @@ def test_dashboard_page_is_served(tmp_path, monkeypatch):
         resp = client.get("/dashboard")
     assert resp.status_code == 200
     assert "Enlace Sonoro" in resp.text
+
+
+def test_503_does_not_leak_internal_error_details(tmp_path, monkeypatch):
+    """OWASP API8: el cliente no ve el error interno (rutas, nombres de excepciones, URLs)."""
+    down = FakeSource("DANE", DANE_SAMPLE, down=True)
+    with make_client(tmp_path, monkeypatch, FakeSource("mun", DIVIPOLA_SAMPLE), down) as client:
+        resp = client.get("/api/v1/opendata/culture/stats")
+    assert resp.json() == {"detail": "The data source is temporarily unavailable. Try again later."}

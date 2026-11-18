@@ -1,0 +1,6 @@
+# Entrada para generar requirements-lock.txt (versiones bloqueadas con hash, usado por el CI).
+# Para regenerarlo después de cambiar requirements.txt:
+#   pip install pip-tools
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras --output-file requirements-lock.txt requirements-ci.in
+-r requirements.txt
+mutmut==3.8.1

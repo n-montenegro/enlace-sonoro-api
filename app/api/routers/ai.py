@@ -6,19 +6,28 @@ ai.py - ADAPTADOR DE ENTRADA (HTTP): endpoints del asistente musical con LLM.
 
 La lógica (RAG, prompt, llamada al LLM y registro) está en RecommendationService.
 Aquí solo se traducen los errores del dominio a códigos HTTP.
+
+Seguridad (Guía 7):
+  - POST requiere estar autenticado y tiene límite de solicitudes: cada llamada al LLM cuesta (OWASP API4/API6).
+  - GET /calls solo para ADMIN: contiene las preguntas de todos los usuarios.
 """
+import logging
 from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_recommendation_service
+from app.api.rate_limit import limit
+from app.api.security import require_role
 from app.api.schemas import ErrorResponse
 from app.application.recommendation_service import RecommendationService
 from app.domain.recommendation.ports import (LLMConfigError, LLMError, LLMRateLimitError,
                                              LLMTimeoutError)
+from app.domain.identity.user import ADMIN, USER
 
 router = APIRouter(prefix="/api/v1/ai", tags=["AI Assistant"])
+logger = logging.getLogger("enlace_sonoro.ai")
 
 
 def error_doc(description: str, example: str) -> dict:
@@ -55,10 +64,11 @@ class AIResponse(BaseModel):
     ),
     responses={
         429: error_doc("LLM rate limit exceeded", "Gemini rate limit exceeded (HTTP 429). Wait a minute and try again."),
-        502: error_doc("The LLM returned an error", "Gemini returned HTTP 503: This model is currently experiencing high demand."),
+        502: error_doc("The LLM returned an error", "The AI provider returned an error. Try again later."),
         503: error_doc("The LLM API key is not configured", "GEMINI_API_KEY is not configured. Create a .env file (see .env.example)."),
         504: error_doc("The LLM did not respond in time", "Gemini did not respond within 30 seconds"),
     },
+    dependencies=[Depends(require_role(USER)), Depends(limit("ai"))],
 )
 def ask_assistant(request: AIRequest, service: RecommendationService = Depends(get_recommendation_service)):
     try:
@@ -70,13 +80,16 @@ def ask_assistant(request: AIRequest, service: RecommendationService = Depends(g
     except LLMTimeoutError as exc:
         raise HTTPException(status_code=504, detail=str(exc))
     except LLMError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        # el mensaje completo del proveedor queda en el log y en /calls (ADMIN), no en la respuesta pública
+        logger.warning("LLM error: %s", exc)
+        raise HTTPException(status_code=502, detail="The AI provider returned an error. Try again later.")
 
 
 @router.get(
     "/calls",
-    summary="List logged LLM calls",
-    description="Returns every call made to the LLM (successful and failed), used as evidence of real usage.",
+    summary="List logged LLM calls (ADMIN)",
+    description="Returns every call made to the LLM (successful and failed). Requires the ADMIN role.",
+    dependencies=[Depends(require_role(ADMIN))],
 )
 def list_calls(service: RecommendationService = Depends(get_recommendation_service)):
     return service.calls()

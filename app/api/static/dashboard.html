@@ -19,8 +19,10 @@
   h2 { margin: 0 0 4px; font-size: 18px; }
   .fuente { font-size: 12px; color: #666; margin-bottom: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 12px; }
-  td { padding: 6px 8px; border-bottom: 1px solid #e3e3e3; }
-  td:last-child { text-align: right; font-weight: bold; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid #e3e3e3; }
+  th { text-align: left; font-size: 12px; color: #666; }
+  th:last-child, td:last-child { text-align: right; }
+  td:last-child { font-weight: bold; }
   .estado { display: inline-block; padding: 3px 10px; border-radius: 12px; color: white; font-size: 13px; font-weight: bold; }
   .CLOSED { background: #1e8a3c; } .OPEN { background: var(--rojo); } .HALF_OPEN { background: #c98a00; }
   .ancho { grid-column: 1 / -1; }
@@ -38,19 +40,28 @@
     <h2>Municipios por departamento (top 10)</h2>
     <div class="fuente" id="fuente-mun">Cargando...</div>
     <canvas id="grafica-mun" height="260"></canvas>
-    <table id="tabla-mun"></table>
+    <table>
+      <thead><tr><th scope="col">Indicador</th><th scope="col">Valor</th></tr></thead>
+      <tbody id="tabla-mun"></tbody>
+    </table>
   </section>
 
   <section>
     <h2>Encuesta de Consumo Cultural: descargas por año</h2>
     <div class="fuente" id="fuente-ecc">Cargando...</div>
     <canvas id="grafica-ecc" height="260"></canvas>
-    <table id="tabla-ecc"></table>
+    <table>
+      <thead><tr><th scope="col">Indicador</th><th scope="col">Valor</th></tr></thead>
+      <tbody id="tabla-ecc"></tbody>
+    </table>
   </section>
 
   <section class="ancho">
     <h2>Estado de los circuit breakers</h2>
-    <table id="tabla-cb"></table>
+    <table>
+      <thead><tr><th scope="col">Fuente</th><th scope="col">Estado</th></tr></thead>
+      <tbody id="tabla-cb"></tbody>
+    </table>
   </section>
 </main>
 

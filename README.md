@@ -1,5 +1,9 @@
 # Enlace Sonoro API
 
+[![CI](https://github.com/n-montenegro/enlace-sonoro-api/actions/workflows/ci.yml/badge.svg)](https://github.com/n-montenegro/enlace-sonoro-api/actions/workflows/ci.yml)
+![Mutation score](https://img.shields.io/badge/mutation%20score-99.8%25-brightgreen)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=n-montenegro_enlace-sonoro-api&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=n-montenegro_enlace-sonoro-api)
+
 REST API for **Enlace Sonoro** (music player) — Taller de Programación, UMB.
 Authors: Nicolas Montenegro Gonzalez & Jhorman David Pardo Villamil.
 
@@ -49,10 +53,37 @@ py -3.14 scripts/run_experiments.py   # generates docs/prompting_comparison.md
 py -3.14 scripts/cost_estimate.py     # generates docs/cost_estimate.md
 ```
 
+## Security (Lab Guide 7)
+
+JWT authentication with role-based access control (**ADMIN** / **USER**) and 10 controls of the
+[OWASP API Security Top 10 2023](docs/security/owasp-api-top10-2023.md).
+
+```bash
+python scripts/create_user.py admin ADMIN   # create the first administrator (hidden password)
+```
+
+| Method | Path | Access |
+|---|---|---|
+| POST | /api/v1/auth/register | Public (always creates a USER) |
+| POST | /api/v1/auth/login | Public (returns a JWT) |
+| GET | /api/v1/auth/me | USER test endpoint |
+| GET | /api/v1/admin/stats | ADMIN test endpoint |
+
+## Quality (Lab Guide 7)
+
+- **SonarQube Cloud:** analysis with test coverage on every push (`sonar-project.properties`).
+  See the [issues fixed](docs/quality/sonarcloud.md).
+- **Supply chain:** the pipeline installs `requirements-lock.txt` (pinned versions + SHA-256 hashes, binary packages only)
+  and GitHub Actions are pinned to a full commit SHA.
+- **Mutation testing:** mutmut runs in GitHub Actions; the build fails if the score is below 50 %.
+  See the [mutant analysis](docs/quality/mutation-testing.md).
+- **CodeQL** and **Dependabot** (`.github/dependabot.yml`) watch the code and the dependencies.
+
 ## Run tests
 
 ```bash
 pytest -v
+pytest --cov=app        # with coverage
 ```
 
 ## Endpoints

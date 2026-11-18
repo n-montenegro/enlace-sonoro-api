@@ -9,8 +9,7 @@ Ejecutar: pytest -v
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
-from tests.fakes import FakeLLM
+from tests.helpers import auth_headers, make_app
 
 SONG = {
     "title": "Bohemian Rhapsody",
@@ -24,9 +23,8 @@ SONG = {
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # Cada prueba usa su propio archivo .db temporal
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    app = create_app(llm=FakeLLM())
-    with TestClient(app) as c:  # el "with" crea la tabla (lifespan)
+    with TestClient(make_app(tmp_path, monkeypatch)) as c:  # el "with" crea las tablas (lifespan)
+        c.headers.update(auth_headers(c, "admin", "ADMIN"))  # el CRUD completo requiere el rol ADMIN
         yield c
 
 

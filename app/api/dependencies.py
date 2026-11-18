@@ -21,3 +21,7 @@ def get_recommendation_service(request: Request) -> RecommendationService:
 
 def get_opendata_service(request: Request) -> OpenDataService:
     return request.app.state.opendata_service
+
+
+def get_auth_service(request: Request):
+    return request.app.state.auth_service
