@@ -88,3 +88,43 @@ def test_count_users_delegates_to_repository():
     service, users, _, _ = build()
     users.count.return_value = 7
     assert service.count_users() == 7
+
+
+# ---------- Guía 8: primer ADMIN en producción (variables ADMIN_USERNAME / ADMIN_PASSWORD) ----------
+
+def test_ensure_admin_creates_first_admin_when_there_are_no_users():
+    service, users, hasher, _ = build()
+    users.count.return_value = 0
+    hasher.hash.return_value = "HASH"
+    users.add.side_effect = lambda u: u
+
+    assert service.ensure_admin("Admin", "una-clave-muy-larga") is True
+
+    created = users.add.call_args.args[0]
+    assert (created.username, created.role, created.password_hash) == ("admin", ADMIN, "HASH")
+
+
+def test_ensure_admin_does_nothing_if_users_already_exist():
+    service, users, _, _ = build()
+    users.count.return_value = 1
+    assert service.ensure_admin("admin", "una-clave-muy-larga") is False
+    users.add.assert_not_called()
+
+
+def test_ensure_admin_does_nothing_without_credentials():
+    service, users, _, _ = build()
+    users.count.return_value = 0
+    assert service.ensure_admin("", "una-clave-muy-larga") is False
+    assert service.ensure_admin("admin", "") is False
+    users.add.assert_not_called()
+    users.count.assert_not_called()  # ni siquiera consulta la base de datos
+
+
+def test_ensure_admin_requires_a_long_password():
+    service, users, hasher, _ = build()
+    users.count.return_value = 0
+    users.add.side_effect = lambda u: u
+    with pytest.raises(ValueError, match="at least 12 characters"):
+        service.ensure_admin("admin", "corta-11ch!")       # 11 caracteres
+    users.add.assert_not_called()
+    assert service.ensure_admin("admin", "justo-12cars") is True  # 12 caracteres: se acepta

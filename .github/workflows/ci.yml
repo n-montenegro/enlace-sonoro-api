@@ -1,6 +1,10 @@
-# Pipeline CI/CD de Enlace Sonoro
-#   1. tests:    pruebas + cobertura y análisis de SonarQube Cloud (si existe el secreto SONAR_TOKEN)
-#   2. mutation: mutation testing con mutmut; el build FALLA si el Mutation Score es menor a 50 %
+# Pipeline CI/CD de Enlace Sonoro: 4 etapas (Guía 8)
+#   1. TEST   -> tests:    pruebas + cobertura (con PostgreSQL real) y SonarQube Cloud
+#                mutation: mutation testing con mutmut; FALLA si el Mutation Score es menor a 50 %
+#   2. BUILD  -> build:    construye la imagen Docker multi-stage y la prueba (arranca, /health, usuario no-root)
+#   3. PUSH   -> push:     sube la imagen a Docker Hub (solo en main)
+#   4. DEPLOY -> deploy:   despliega esa imagen exacta en Render y espera a que la URL pública responda
+# Cada etapa solo corre si la anterior terminó en verde (needs).
 name: CI
 
 on:
@@ -8,19 +12,40 @@ on:
   pull_request:
 
 # Seguridad de la cadena de suministro (correcciones de SonarQube Cloud):
-#   - Las dependencias se instalan desde requirements-lock.txt, con versiones fijas y hash SHA-256
+#   - Las dependencias se instalan desde archivos lock con versiones fijas y hash SHA-256
 #     (--require-hashes) y solo como paquetes binarios (--only-binary :all:), sin ejecutar setup.py.
 #   - Las acciones de GitHub se fijan por su SHA completo (el comentario indica la versión).
+#   - Los secretos (Docker Hub, Render) se leen como variables de entorno, nunca se escriben en el código.
 
 # Permisos mínimos para el token de GitHub (buena práctica de seguridad)
 permissions:
   contents: read
 
+env:
+  IMAGE_NAME: enlace-sonoro-api
+
 jobs:
+  # ======================= ETAPA 1: TEST =======================
   tests:
+    name: "1. Test (pytest + SonarQube)"
     runs-on: ubuntu-latest
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # Las pruebas de los adaptadores PostgreSQL usan esta base de datos (contenedor de abajo)
+      TEST_DATABASE_URL: postgresql://enlace@localhost:5432/enlace_test
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: enlace
+          POSTGRES_DB: enlace_test
+          # Base de datos temporal SOLO para pruebas (se borra al terminar el job): sin contraseña
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U enlace -d enlace_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - name: Descargar el código
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -43,6 +68,7 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4  # v8
 
   mutation:
+    name: "1. Test (mutation testing)"
     needs: tests
     runs-on: ubuntu-latest
     steps:
@@ -68,3 +94,123 @@ jobs:
       - name: Listar mutantes sobrevivientes
         if: always()
         run: mutmut results || true
+
+  # ======================= ETAPA 2: BUILD =======================
+  build:
+    name: "2. Build (imagen Docker)"
+    needs: [tests, mutation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Construir la imagen multi-stage
+        run: docker build --build-arg APP_VERSION="${GITHUB_SHA::7}" -t "$IMAGE_NAME:ci" .
+
+      - name: "Prueba de humo: la imagen arranca y /health responde"
+        run: |
+          docker run -d --name smoke -p 8000:8000 -e JWT_SECRET="$(openssl rand -hex 32)" "$IMAGE_NAME:ci"
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health; then echo; echo "OK"; exit 0; fi
+            sleep 2
+          done
+          docker logs smoke
+          exit 1
+
+      - name: "Seguridad: el contenedor NO corre como root"
+        run: |
+          uid=$(docker run --rm --entrypoint id "$IMAGE_NAME:ci" -u)
+          echo "UID dentro del contenedor: $uid"
+          test "$uid" != "0"
+
+      - name: Tamaño de la imagen
+        run: |
+          docker image ls "$IMAGE_NAME:ci" --format "{{.Repository}}:{{.Tag}}  {{.Size}}"
+          echo "### Imagen Docker: $(docker image ls "$IMAGE_NAME:ci" --format '{{.Size}}')" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar la imagen para la etapa PUSH
+        run: docker save "$IMAGE_NAME:ci" | gzip > image.tar.gz
+
+      - name: Pasar la imagen a la siguiente etapa
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: docker-image
+          path: image.tar.gz
+          retention-days: 1
+
+  # ======================= ETAPA 3: PUSH =======================
+  push:
+    name: "3. Push (Docker Hub)"
+    needs: build
+    # Solo cuando se sube código a main (no en pull requests ni en otras ramas)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+    steps:
+      - name: Recibir la imagen de la etapa BUILD
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: docker-image
+
+      - name: Iniciar sesión en Docker Hub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}  # el secreto solo existe en este paso
+        run: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+      - name: Etiquetar y subir (latest + commit)
+        id: publish
+        run: |
+          gunzip -c image.tar.gz | docker load
+          repo="docker.io/$DOCKERHUB_USERNAME/$IMAGE_NAME"
+          docker tag "$IMAGE_NAME:ci" "$repo:latest"
+          docker tag "$IMAGE_NAME:ci" "$repo:sha-${GITHUB_SHA::7}"
+          docker push "$repo:latest"
+          docker push "$repo:sha-${GITHUB_SHA::7}"
+          # El digest (sha256) identifica la imagen EXACTA que se probó: eso es lo que se despliega
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$repo:latest" | cut -d@ -f2)
+          echo "image=$repo@$digest" >> "$GITHUB_OUTPUT"
+          echo "### Docker Hub: \`$repo@$digest\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cerrar sesión
+        if: always()
+        run: docker logout
+
+  # ======================= ETAPA 4: DEPLOY =======================
+  deploy:
+    name: "4. Deploy (Render)"
+    needs: push
+    runs-on: ubuntu-latest
+    # Evita dos despliegues al mismo tiempo; el más nuevo espera al anterior
+    concurrency: production
+    environment:
+      name: production
+      url: ${{ vars.RENDER_APP_URL }}
+    env:
+      RENDER_APP_URL: ${{ vars.RENDER_APP_URL }}
+      IMAGE: ${{ needs.push.outputs.image }}
+    steps:
+      - name: Pedir a Render que despliegue la imagen
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          # imgURL = la imagen exacta (por digest) que pasó las etapas anteriores
+          curl -fsS -o /dev/null -G --data-urlencode "imgURL=$IMAGE" "$RENDER_DEPLOY_HOOK_URL"
+          echo "Despliegue solicitado: $IMAGE"
+
+      - name: "Verificar la URL pública (espera la versión nueva)"
+        run: |
+          expected="${GITHUB_SHA::7}"
+          for i in $(seq 1 40); do
+            body=$(curl -fsS --max-time 20 "$RENDER_APP_URL/health" || true)
+            echo "Intento $i: $body"
+            if echo "$body" | grep -q "\"version\":\"$expected\""; then
+              echo "### Producción: $RENDER_APP_URL (versión $expected)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "La versión $expected no respondió a tiempo en $RENDER_APP_URL"
+          exit 1

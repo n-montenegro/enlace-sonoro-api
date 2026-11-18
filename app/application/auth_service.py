@@ -9,7 +9,9 @@ Recibe por CONSTRUCTOR sus 3 dependencias (puertos del dominio):
 from app.domain.identity.errors import (InvalidCredentialsError, InvalidRoleError, InvalidTokenError,
                                         PermissionDeniedError)
 from app.domain.identity.ports import PasswordHasher, TokenService, UserRepository
-from app.domain.identity.user import ROLES, USER, User
+from app.domain.identity.user import ADMIN, ROLES, USER, User
+
+MIN_ADMIN_PASSWORD = 12
 
 
 class AuthService:
@@ -48,3 +50,15 @@ class AuthService:
 
     def count_users(self) -> int:
         return self.users.count()
+
+    def ensure_admin(self, username: str, password: str) -> bool:
+        """
+        Crea el primer ADMIN en producción (Guía 8). Solo actúa si se dieron usuario y contraseña
+        y si todavía no existe ningún usuario: así nadie puede crear otro ADMIN reiniciando la app.
+        """
+        if not username or not password or self.users.count() > 0:
+            return False
+        if len(password) < MIN_ADMIN_PASSWORD:
+            raise ValueError(f"ADMIN_PASSWORD must have at least {MIN_ADMIN_PASSWORD} characters")
+        self.register(username, password, ADMIN)
+        return True

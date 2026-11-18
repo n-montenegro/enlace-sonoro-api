@@ -1,18 +1,20 @@
 """
 main.py - COMPOSITION ROOT de Enlace Sonoro.
 
-Es el ÚNICO lugar donde se crean los adaptadores concretos (SQLite, Gemini, datos.gov.co,
-DANE, DuckDB) y se inyectan en los servicios por su constructor.
+Es el ÚNICO lugar donde se crean los adaptadores concretos (SQLite o PostgreSQL, Gemini,
+datos.gov.co, DANE, DuckDB) y se inyectan en los servicios por su constructor.
 Las demás capas solo conocen interfaces (puertos).
 
 Arquitectura hexagonal:
     api/            -> adaptadores de ENTRADA (FastAPI)
     application/    -> casos de uso (servicios)
     domain/         -> entidades, reglas de negocio y puertos (sin librerías externas)
-    infrastructure/ -> adaptadores de SALIDA (SQLite, Gemini, APIs colombianas, DuckDB)
+    infrastructure/ -> adaptadores de SALIDA (SQLite/PostgreSQL, Gemini, APIs colombianas, DuckDB)
 
 Seguridad (Guía 7): JWT + RBAC (ADMIN / USER), límites de solicitudes, CORS restringido
 y cabeceras de seguridad. Ver docs/security/owasp-api-top10-2023.md
+
+Producción (Guía 8): si existe la variable DATABASE_URL se usa PostgreSQL; si no, SQLite (desarrollo y pruebas).
 
 Ejecutar:   uvicorn app.main:app --reload
 Swagger UI: http://127.0.0.1:8000/docs
@@ -27,6 +29,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.rate_limit import RateLimiter
 from app.api.routers import admin, ai, auth, dashboard, opendata, songs
@@ -34,7 +37,8 @@ from app.application.auth_service import AuthService
 from app.application.opendata_service import OpenDataService
 from app.application.recommendation_service import RecommendationService
 from app.application.song_service import SongService
-from app.domain.identity.ports import PasswordHasher
+from app.domain.catalog.ports import SongRepository
+from app.domain.identity.ports import PasswordHasher, UserRepository
 from app.domain.opendata.ports import OpenDataSource
 from app.domain.recommendation.ports import LLMPort
 from app.infrastructure.analytics.duckdb_analytics import DuckDBAnalytics
@@ -43,6 +47,8 @@ from app.infrastructure.llm.jsonl_call_log import JsonlCallLog
 from app.infrastructure.opendata.dane_client import DANE_CATALOG_URL, DaneCatalogClient
 from app.infrastructure.opendata.datos_gov_client import DIVIPOLA_URL, DatosGovDivipolaClient
 from app.infrastructure.opendata.json_dataset_store import JsonDatasetStore
+from app.infrastructure.persistence.postgres_song_repository import PostgresSongRepository
+from app.infrastructure.persistence.postgres_user_repository import PostgresUserRepository
 from app.infrastructure.persistence.sqlite_song_repository import SqliteSongRepository
 from app.infrastructure.persistence.sqlite_user_repository import SqliteUserRepository
 from app.infrastructure.resilience.circuit_breaker import CircuitBreaker
@@ -70,6 +76,17 @@ def jwt_secret() -> str:
     return secret
 
 
+def build_repositories() -> tuple[SongRepository, UserRepository]:
+    """PostgreSQL si hay DATABASE_URL (Render y docker-compose); SQLite en desarrollo y pruebas."""
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        logger.info("Database: PostgreSQL")
+        return PostgresSongRepository(database_url), PostgresUserRepository(database_url)
+    db_path = os.getenv("DB_PATH", "enlace_sonoro.db")
+    logger.info("Database: SQLite (%s)", db_path)
+    return SqliteSongRepository(db_path), SqliteUserRepository(db_path)
+
+
 def create_app(llm: Optional[LLMPort] = None,
                municipalities: Optional[OpenDataSource] = None,
                studies: Optional[OpenDataSource] = None,
@@ -79,9 +96,7 @@ def create_app(llm: Optional[LLMPort] = None,
     en lugar de Gemini o de las APIs reales.
     """
     # ---- adaptadores de salida (infraestructura) ----
-    db_path = os.getenv("DB_PATH", "enlace_sonoro.db")
-    repository = SqliteSongRepository(db_path)
-    user_repository = SqliteUserRepository(db_path)
+    repository, user_repository = build_repositories()
     call_log = JsonlCallLog(os.getenv("LLM_LOG_PATH", os.path.join("logs", "llm_calls.jsonl")))
     llm = llm or GeminiClient()
     municipalities = municipalities or DatosGovDivipolaClient(
@@ -94,6 +109,10 @@ def create_app(llm: Optional[LLMPort] = None,
     async def lifespan(app: FastAPI):
         repository.init_schema()  # crea las tablas al arrancar la API
         user_repository.init_schema()
+        # En Render no hay terminal para correr scripts/create_user.py: el primer ADMIN se crea
+        # con las variables ADMIN_USERNAME y ADMIN_PASSWORD (solo si la tabla de usuarios está vacía)
+        if app.state.auth_service.ensure_admin(os.getenv("ADMIN_USERNAME", ""), os.getenv("ADMIN_PASSWORD", "")):
+            logger.info("First ADMIN user created from environment variables")
         yield
 
     app = FastAPI(
@@ -149,6 +168,18 @@ def create_app(llm: Optional[LLMPort] = None,
     @app.get("/", tags=["Health"], summary="Health check", description="Confirms the API is running.")
     def root():
         return {"status": "ok", "docs": "/docs", "dashboard": "/dashboard"}
+
+    @app.get("/health", tags=["Health"], summary="Readiness check (API + database)",
+             description="Used by Docker, docker-compose and Render: returns 503 if the database is not reachable.",
+             responses={503: {"description": "Database unavailable"}})
+    def health():
+        try:
+            app.state.auth_service.count_users()  # consulta mínima a la base de datos
+        except Exception:
+            logger.exception("Health check failed: database unavailable")
+            return JSONResponse(status_code=503, content={"status": "error", "database": "unavailable"})
+        # version = commit desplegado (lo pone el pipeline al construir la imagen); "dev" en local
+        return {"status": "ok", "database": "ok", "version": os.getenv("APP_VERSION", "dev")}
 
     return app
 

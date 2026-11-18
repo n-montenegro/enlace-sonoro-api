@@ -1,0 +1,37 @@
+# Archivos que NO se envían a Docker al construir la imagen (contexto de construcción).
+# Así la construcción es más rápida y nunca se cuelan secretos ni bases de datos locales.
+
+# Secretos y datos locales
+.env
+.env.*
+*.db
+logs/
+data/
+
+# Entornos virtuales y cachés
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+coverage.xml
+mutants/
+
+# Git, CI y documentación (no se necesitan para ejecutar la API)
+.git/
+.github/
+docs/
+tests/
+scripts/
+*.md
+*.patch
+Dockerfile
+.dockerignore
+docker-compose.yml
+sonar-project.properties
+requirements.txt
+requirements-ci.in
+requirements-lock.txt
+requirements-prod.in
+pyproject.toml

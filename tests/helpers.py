@@ -10,6 +10,9 @@ PASSWORD = "Clave-de-prueba-123"
 
 def make_app(tmp_path, monkeypatch, **overrides):
     """Crea la app con base de datos temporal y un hasher rápido (pocas iteraciones, solo para pruebas)."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)  # las pruebas de la API siempre usan SQLite temporal
+    monkeypatch.delenv("ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("LLM_LOG_PATH", str(tmp_path / "calls.jsonl"))
     monkeypatch.setenv("OPEN_DATA_DIR", str(tmp_path / "data"))

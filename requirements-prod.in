@@ -1,0 +1,14 @@
+# Dependencias de PRODUCCIÓN (lo que va dentro de la imagen Docker). Sin pytest ni herramientas de pruebas:
+# así la imagen es más pequeña y tiene menos paquetes que puedan tener vulnerabilidades.
+# -c: usa EXACTAMENTE las mismas versiones que se probaron en el CI (requirements-lock.txt).
+# Para regenerar requirements-prod.txt (después de actualizar requirements-lock.txt):
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras --output-file requirements-prod.txt requirements-prod.in
+-c requirements-lock.txt
+fastapi==0.156.3
+uvicorn==0.54.0
+httpx==0.28.1
+python-dotenv==1.2.4
+duckdb==2.0.0
+pyjwt==2.15.1
+python-multipart==0.0.33
+psycopg[binary]==3.3.9

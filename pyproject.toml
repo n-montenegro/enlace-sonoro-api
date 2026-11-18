@@ -4,7 +4,9 @@
 # Mutation testing: se muta la lógica de negocio (dominio y casos de uso)
 paths_to_mutate = ["app/domain/", "app/application/"]
 pytest_add_cli_args_test_selection = ["tests/"]
-also_copy = ["app/", "scripts/", ".github/", "requirements-lock.txt"]
+# Archivos que leen las pruebas de configuración (pipeline, Docker, dependencias)
+also_copy = ["app/", "scripts/", ".github/", "requirements-lock.txt", "requirements-prod.txt",
+             "Dockerfile", ".dockerignore", "docker-compose.yml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

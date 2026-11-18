@@ -7,3 +7,4 @@ duckdb==2.0.0
 pyjwt==2.15.1
 python-multipart==0.0.33
 pytest-cov==7.1.0
+psycopg[binary]==3.3.9
