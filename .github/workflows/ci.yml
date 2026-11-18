@@ -36,7 +36,7 @@ jobs:
         run: 'pip install --only-binary :all: --require-hashes -r requirements-lock.txt'
 
       - name: Ejecutar pruebas con cobertura
-        run: pytest -v --cov=app --cov-report=xml --cov-report=term
+        run: pytest -v --cov=app --cov=scripts --cov-report=xml --cov-report=term
 
       - name: Análisis de SonarQube Cloud
         if: ${{ env.SONAR_TOKEN != '' }}

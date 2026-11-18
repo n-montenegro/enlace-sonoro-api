@@ -5,6 +5,10 @@ Lee mutants/mutmut-cicd-stats.json (lo genera "mutmut export-cicd-stats").
 Score = mutantes detectados (killed + timeout) / mutantes evaluados (total - skipped) * 100
 
 Uso:  python scripts/mutation_score.py --min 50
+
+Seguridad (corrección SonarQube Cloud, Path Traversal - CWE-22): antes la ruta del archivo de
+estadísticas se recibía como argumento (--stats) y se abría sin validar. Ahora la ruta es fija
+y el único argumento es el número mínimo, que argparse convierte a float.
 """
 import argparse
 import json
@@ -23,10 +27,9 @@ def mutation_score(stats: dict) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--min", type=float, default=50.0, help="score mínimo para que el build pase")
-    parser.add_argument("--stats", default=STATS_FILE)
     args = parser.parse_args()
 
-    with open(args.stats, encoding="utf-8") as f:
+    with open(STATS_FILE, encoding="utf-8") as f:
         stats = json.load(f)
     score = mutation_score(stats)
     passed = score >= args.min
