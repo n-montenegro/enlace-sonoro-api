@@ -48,18 +48,22 @@ RUN pip install -r requirements.txt
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0"]
 ```
 
-Medición en nuestro equipo con `docker image ls`:
+Medición en nuestro equipo con `docker image ls` (Docker Desktop, 18 de noviembre de 2026):
 
-| Imagen | Base | Etapas | Usuario | Tamaño |
-|---|---|---|---|---|
-| Antes (`enlace-sonoro-api:naive`) | `python:3.12` | 1 | root | _medir_ |
-| Después (`enlace-sonoro-api:local`) | `python:3.12-slim` | 2 | appuser | _medir_ |
+| Imagen | Base | Etapas | Usuario | Tamaño en disco | Tamaño comprimido |
+|---|---|---|---|---|---|
+| Antes (`enlace-sonoro-api:naive`) | `python:3.12` | 1 | root | 1,86 GB | 496 MB |
+| Después (`enlace-sonoro-api:local`) | `python:3.12-slim` | 2 | appuser | 337 MB | 83,6 MB |
+| Reducción | | | | ≈ 82 % | ≈ 83 % |
+
+Para construir la versión "antes" se usó además un archivo `Dockerfile.naive.dockerignore` (excluye `venv/`, `.git/`,
+`.env`, `*.db` y `mutants/`) para no meter claves en la imagen de prueba; ninguno de los dos archivos se sube al repositorio.
 
 ## Variables de entorno en Render
 
 | Variable | Valor |
 |---|---|
-| `DATABASE_URL` | *Internal Database URL* de la base de datos PostgreSQL de Render |
+| `DATABASE_URL` | *Internal Database URL* de la base de datos PostgreSQL de Render (`enlace-sonoro-db`, Virginia) |
 | `JWT_SECRET` | 48+ caracteres aleatorios (`python -c "import secrets; print(secrets.token_urlsafe(48))"`) |
 | `GEMINI_API_KEY` | clave de Google AI Studio |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | primer administrador (solo se crea si no hay usuarios) |
