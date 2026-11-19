@@ -35,7 +35,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
     PORT=8000 \
-    APP_VERSION=${APP_VERSION}
+    APP_VERSION=${APP_VERSION} \
+    DB_PATH=/app/data/enlace_sonoro.db
 
 # Usuario SIN privilegios: si alguien encontrara una falla en la app, no sería root dentro del contenedor
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser
@@ -44,7 +45,8 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 # El código queda como propiedad de root: el usuario de la app puede leerlo pero NO modificarlo
 COPY app ./app
-# Únicas carpetas donde la app escribe: registro de llamadas a la IA y copias de los datos abiertos
+# Únicas carpetas donde la app escribe: registro de llamadas a la IA, copias de los datos abiertos
+# y la base SQLite cuando no hay DATABASE_URL (DB_PATH). /app es de root y appuser no puede escribir ahí.
 RUN mkdir logs data && chown appuser:appuser logs data
 
 USER appuser

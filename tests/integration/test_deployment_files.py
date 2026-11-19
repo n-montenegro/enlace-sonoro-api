@@ -36,6 +36,14 @@ def test_dockerfile_runs_as_non_root_user():
     assert lines.index("USER appuser") > max(i for i, line in enumerate(lines) if line.startswith("RUN "))
 
 
+def test_sqlite_fallback_is_written_in_a_folder_the_app_user_owns():
+    """Regresión (CI #31): sin DATABASE_URL la app creaba enlace_sonoro.db en /app (de root) y no arrancaba."""
+    lines = instructions(read("Dockerfile"))
+    env = next(line for line in lines if line.startswith("ENV ") and "DB_PATH=" in line)
+    assert "DB_PATH=/app/data/enlace_sonoro.db" in env
+    assert "RUN mkdir logs data && chown appuser:appuser logs data" in lines
+
+
 def test_dockerfile_has_healthcheck_and_locked_dependencies():
     lines = instructions(read("Dockerfile"))
     assert any(line.startswith("HEALTHCHECK") and "/health" in line for line in lines)
